@@ -1,0 +1,2 @@
+# nonebot_plugin_masterduel
+大师决斗卡查等各种功能的一个Nonebot2机器人插件
