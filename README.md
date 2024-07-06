@@ -1,0 +1,2 @@
+# nonebot_plugin_masterduel
+一个nb支持各种游戏王查询的机器人插件
