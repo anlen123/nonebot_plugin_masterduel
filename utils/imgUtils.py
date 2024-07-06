@@ -2,16 +2,23 @@ from PIL import Image
 import requests
 from io import BytesIO
 import base64
+import os
 
 
 def pin_quality(card_id:int, quality:str):
     # 加载URL图片
     url_image_url = f'https://cdn.233.momobako.com/ygopro/pics/{card_id}.jpg'
+
+    # 加载URL图片
     response = requests.get(url_image_url)
     url_image = Image.open(BytesIO(response.content))
 
     # 加载本地图片
-    local_image_path = f'./{quality}'
+    current_directory = "."
+    if quality == '暂未登录MD':
+        return url_image_url
+
+    local_image_path = f'{current_directory}/plugins/nonebot_plugin_masterduel/nonebot_plugin_masterduel/img/{quality}'
     local_image = Image.open(local_image_path)
     local_image.thumbnail((local_image.width * 0.5, local_image.height * 0.5))
 
@@ -31,7 +38,6 @@ def pin_quality(card_id:int, quality:str):
     # 将拼接后的图像转换为Base64格式
     buffered = BytesIO()
     result_image.save(buffered, format='JPEG')
-    result_image.save("1.jpeg")
     image_base64 = base64.b64encode(buffered.getvalue()).decode()
 
-    return image_base64
+    return "base64://" + image_base64
