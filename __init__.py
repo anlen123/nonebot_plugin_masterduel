@@ -2,7 +2,7 @@ from typing import List, Any
 from .config import Config
 from nonebot.plugin import on_notice, on_regex
 from nonebot.adapters.onebot.v11 import Bot, Event, MessageSegment, Message, GroupMessageEvent
-import nonebot
+import nonebot, os, random
 
 from .model.Card import YgoCard
 from .mapper import *
@@ -21,25 +21,33 @@ master_duel_CK = on_regex(pattern="^CK")
 async def master_duel_rev(bot: Bot, event: Event):
     cmd = event.get_plaintext()[2:]
     cmd = cmd.strip()
+    if not cmd:
+        return
 
     ygoCard = mapper.get_card_info_by_alias(cmd)
 
     if not ygoCard:
-        ygoCard = get_card_info_like_name(cmd)
-        if not ygoCard:
-            ygoCard = mapper.get_card_info_by_name(cmd)
+        cardId = get_max_like_id(cmd)
+        ygoCard = get_card_info_by_id(cardId)
 
     if ygoCard:
 
         messageSegment = await get_send_msg(ygoCard)
 
         await bot.send(event, messageSegment)
+        directory = f"D:\\nb2\my_nonebot2\plugins\\nonebot_plugin_masterduel\\nonebot_plugin_masterduel\img\\{ygoCard.id}"
+        if os.path.exists(directory):
+            files = os.listdir(directory)
+            print(directory)
+            print(random.choice(files))
+            file = directory + "\\" + random.choice(files)
+            print(file)
+            await bot.send(event, MessageSegment.image(file))
     else:
-        await bot.send(event, MessageSegment.text(
-            "暂时只支持全名查询，后续会支持别名，模糊搜索等功能，对了， 右上角的稀有度也是假的， 后续功能完善"))
+        await bot.send(event, MessageSegment.text("暂时只支持全名查询，后续会支持别名，模糊搜索等功能，后续功能完善"))
 
 
-async def get_send_msg(card: YgoCard) -> MessageSegment:
+async def get_send_msg(card: YgoCard) -> Message:
     rarity = rarityUtils.get_rarity(card.id)
     urlBase64 = imgUtils.pin_quality(int(card.id), rarity)
     return MessageSegment.text(f"卡号：{card.id}\n{card.name}\n") + MessageSegment.text(
@@ -47,9 +55,11 @@ async def get_send_msg(card: YgoCard) -> MessageSegment:
 
 
 alias_card = on_regex(pattern="^别名")
+alias_card2 = on_regex(pattern="^外号")
 
 
 @alias_card.handle()
+@alias_card2.handle()
 async def alias_card_rev(bot: Bot, event: Event):
     cmd = event.get_plaintext()[2:]
     cmd = cmd.strip()
@@ -83,13 +93,14 @@ async def master_like_duel_rev(bot: Bot, event: Event):
     ygoCardList = mapper.get_card_info_like_names(cmd)
     if not ygoCardList:
         await bot.send(event, MessageSegment.text(
-            "暂时只支持全名查询，后续会支持别名，模糊搜索等功能，对了， 右上角的稀有度也是假的， 后续功能完善"))
+            "暂时只支持全名查询，后续会支持别名，模糊搜索等功能， 后续功能完善"))
         return
     ygoCardList = ygoCardList[:20]
     msgs = ""
     for card in ygoCardList:
         msgs += MessageSegment.text(f"卡号：{card.id}      {card.name}\n\n")
     await bot.send(event=event, message=msgs)
+
 
 # 合并消息
 async def send_forward_msg_group(

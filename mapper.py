@@ -7,6 +7,7 @@ from .model.Rarity import Rarity
 from .model.Card import buildYgoCard
 import sqlite3
 from .model.Alias import Alias
+import difflib, pypinyin
 
 
 def get_card_info_by_id(cardId: int) -> YgoCard:
@@ -71,7 +72,7 @@ def set_card_alias_by_id(cardId: int, name: str):
 
     if aliasList:
         alias = aliasList[0]  # 更新
-        set_nonebot_plugin_masterduel_alias(f'update from alias set card_id = {cardId} where name = "{alias.name}"')
+        set_nonebot_plugin_masterduel_alias(f'update alias set card_id = {cardId} where name = "{alias.name}"')
     else:
         # 插入
         set_nonebot_plugin_masterduel_alias(f'insert into alias (name, card_id) VALUES ("{name}",{cardId})')
@@ -209,3 +210,49 @@ def get_texts(sql: str) -> list[Texts]:
     conn.close()
 
     return textsList
+
+
+def get_id_and_name_all():
+    # 连接到 SQLite 数据库
+
+    conn = sqlite3.connect('cards.cdb')
+
+    # 创建一个 Cursor 对象，用于执行 SQL 命令
+    cursor = conn.cursor()
+
+    # 执行 SQL 命令，获取 datas 表的所有行
+    cursor.execute("select id,name from texts")
+
+    # 获取查询结果
+    rows = cursor.fetchall()
+
+    # 创建一个空列表，用于存储 Ygo_Card 对象
+    textsList = []
+
+    # 对于每一行，创建一个 Ygo_Card 对象，并添加到列表中
+
+    # 关闭连接
+    conn.close()
+    return rows
+
+
+def get_max_like_id(name: str):
+    name = pypinyin.pinyin(name, pypinyin.NORMAL)
+    name = [x[0] for x in name]
+    print(name)
+
+    rows = get_id_and_name_all()
+    ret = None
+    max_number = 0
+
+    for row in rows:
+        c_name = pypinyin.pinyin(row[1], pypinyin.NORMAL)
+        c_name = [x[0] for x in c_name]
+        # print(c_name)
+        dis = difflib.SequenceMatcher(None, c_name, name).ratio()
+        if dis > max_number:
+            max_number = dis
+            ret = row
+    if not ret:
+        return ""
+    return ret[0]
