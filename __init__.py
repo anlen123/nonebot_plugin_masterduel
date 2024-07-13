@@ -1,16 +1,22 @@
 from typing import List, Any
 from .config import Config
-from nonebot.plugin import on_notice, on_regex
-from nonebot.adapters.onebot.v11 import Bot, Event, MessageSegment, Message, GroupMessageEvent
-import nonebot, os, random
+from nonebot.plugin import on_notice, on_regex, on_message
+from nonebot.adapters.onebot.v11 import Bot, Event, MessageSegment, Message, GroupMessageEvent, MessageEvent
+import nonebot, os, random, re
+from nonebot.params import ArgPlainText, Arg, CommandArg
+from nonebot.typing import T_State
 
 from .model.Card import YgoCard
+from nonebot.rule import Rule
 from .mapper import *
 from .utils import imgUtils
 from .utils import rarityUtils
 
 global_config = nonebot.get_driver().config
 config = global_config.dict()
+
+nonebot_plugin_masterduel_img_dir = config.get('nonebot_plugin_masterduel_img_dir')
+nonebot_plugin_masterduel_root_dir = config.get('nonebot_plugin_masterduel_root_dir')
 
 master_duel = on_regex(pattern="^ck")
 master_duel_CK = on_regex(pattern="^CK")
@@ -35,7 +41,7 @@ async def master_duel_rev(bot: Bot, event: Event):
         messageSegment = await get_send_msg(ygoCard)
 
         await bot.send(event, messageSegment)
-        directory = f"D:\\nb2\my_nonebot2\plugins\\nonebot_plugin_masterduel\\nonebot_plugin_masterduel\img\\{ygoCard.id}"
+        directory = f"{nonebot_plugin_masterduel_img_dir}\\{ygoCard.id}"
         if os.path.exists(directory):
             files = os.listdir(directory)
             print(directory)
@@ -92,8 +98,7 @@ async def master_like_duel_rev(bot: Bot, event: Event):
 
     ygoCardList = mapper.get_card_info_like_names(cmd)
     if not ygoCardList:
-        await bot.send(event, MessageSegment.text(
-            "暂时只支持全名查询，后续会支持别名，模糊搜索等功能， 后续功能完善"))
+        await bot.send(event, MessageSegment.text("暂时只支持全名查询，后续会支持别名，模糊搜索等功能， 后续功能完善"))
         return
     ygoCardList = ygoCardList[:20]
     msgs = ""
@@ -102,17 +107,74 @@ async def master_like_duel_rev(bot: Bot, event: Event):
     await bot.send(event=event, message=msgs)
 
 
+def push_ygo_card() -> Rule:
+    async def push_ygo_card_(bot: "Bot", event: "Event") -> bool:
+        if event.get_type() != "message":
+            return False
+        msg = str(event.get_plaintext())
+        if re.findall("^上传游戏王卡图\ \d+$", msg):
+            return True
+        return False
+
+    return Rule(push_ygo_card_)
+
+
+master_duel_push_img = on_message(rule=push_ygo_card())
+
+
+@master_duel_push_img.handle()
+async def master_duel_push_img_rev(bot: Bot, event: MessageEvent, state: T_State):
+    card_id = event.get_plaintext().strip().split(" ")[-1].strip()
+    if card_id:
+        state['card_id'] = card_id
+        ygoCard = mapper.get_card_info_by_id(int(card_id))
+        if not ygoCard:
+            await bot.send(event=event, message="没有找到这张卡")
+            state['img'] = "None"
+            return
+
+
+@master_duel_push_img.got("img", prompt="图呢？")
+async def get_setu(bot: Bot, event: MessageEvent, state: T_State):
+    if state['img'] == "None":
+        return
+    msg = event.get_message()
+    card_id = state['card_id']
+    try:
+        if msg[0].type == "image":
+            url = msg[0].data["url"]  # 图片链接
+            imgUtils.down_img(f"{nonebot_plugin_masterduel_img_dir}\\{card_id}\\", url,
+                              f"{random.randint(1, 10000000)}.jpg")
+            await bot.send(event=event, message="上传成功！")
+    except Exception as e:
+        await bot.send(event=event, message="错误的上传图片")
+
+
+my_deck = on_regex(pattern="^卡组码 ")
+
+
+@my_deck.handle()
+async def master_duel_rev(bot: Bot, event: Event):
+    cmd = event.get_plaintext()[3:]
+    cmd = cmd.strip()
+    zipCard = mapper.get_card_by_md_shard_deck_code(cmd)
+
+    if not zipCard:
+        await bot.send(event=event, message="未找到卡组")
+        return
+    mainCardList, exCardList = zipCard
+    sss = imgUtils.get_all_temp(mainCardList, exCardList)
+    pngName = f"{os.getcwd()}\\{random.randint(1, 99999999999)}.png"
+    imgUtils.screenshot(sss, pngName)
+    print(pngName)
+    await bot.send(event=event, message=MessageSegment.image(pngName))
+    os.remove(pngName)
+
+
 # 合并消息
-async def send_forward_msg_group(
-        bot: Bot,
-        event: GroupMessageEvent,
-        name: str,
-        msgs: List[str],
-):
+async def send_forward_msg_group(bot: Bot, event: GroupMessageEvent, name: str, msgs: List[str], ):
     def to_json(msg):
         return {"type": "node", "data": {"name": name, "uin": bot.self_id, "content": msg}}
 
     messages = [to_json(msg) for msg in msgs]
-    await bot.call_api(
-        "send_group_forward_msg", group_id=event.group_id, messages=messages
-    )
+    await bot.call_api("send_group_forward_msg", group_id=event.group_id, messages=messages)

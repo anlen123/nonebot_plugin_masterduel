@@ -6,7 +6,7 @@ import requests
 def set_rarity(sql: str):
     # 连接到 SQLite 数据库
     print(sql)
-    conn = sqlite3.connect('D:\\nb2\my_nonebot2\\nonebot_plugin_masterduel.cdb')
+    conn = sqlite3.connect('/plugins/nonebot_plugin_masterduel/nonebot_plugin_masterduel/nonebot_plugin_masterduel.cdb')
 
     # 创建一个 Cursor 对象，用于执行 SQL 命令
     cursor = conn.cursor()
@@ -30,7 +30,7 @@ def create_rarity():
     """
     # 连接到 SQLite 数据库
     print(sql)
-    conn = sqlite3.connect('D:\\nb2\my_nonebot2\\nonebot_plugin_masterduel.cdb')
+    conn = sqlite3.connect('/plugins/nonebot_plugin_masterduel/nonebot_plugin_masterduel/nonebot_plugin_masterduel.cdb')
 
     # 创建一个 Cursor 对象，用于执行 SQL 命令
     cursor = conn.cursor()
@@ -50,7 +50,7 @@ def delete_rarity():
     """
     # 连接到 SQLite 数据库
     print(sql)
-    conn = sqlite3.connect('D:\\nb2\my_nonebot2\\nonebot_plugin_masterduel.cdb')
+    conn = sqlite3.connect('/plugins/nonebot_plugin_masterduel/nonebot_plugin_masterduel/nonebot_plugin_masterduel.cdb')
 
     # 创建一个 Cursor 对象，用于执行 SQL 命令
     cursor = conn.cursor()
