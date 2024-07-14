@@ -1,9 +1,9 @@
 from typing import List, Any
 from .config import Config
 from nonebot.plugin import on_notice, on_regex, on_message
-from nonebot.adapters.onebot.v11 import Bot, Event, MessageSegment, Message, GroupMessageEvent, MessageEvent
+from nonebot.adapters.onebot.v11 import Bot, Event, MessageSegment, Message, GroupMessageEvent, MessageEvent, \
+    PrivateMessageEvent
 import nonebot, os, random, re
-from nonebot.params import ArgPlainText, Arg, CommandArg
 from nonebot.typing import T_State
 
 from .model.Card import YgoCard
@@ -11,6 +11,7 @@ from nonebot.rule import Rule
 from .mapper import *
 from .utils import imgUtils
 from .utils import rarityUtils
+from urllib import parse
 
 global_config = nonebot.get_driver().config
 config = global_config.dict()
@@ -29,17 +30,17 @@ async def master_duel_rev(bot: Bot, event: Event):
     cmd = cmd.strip()
     if not cmd:
         return
-
-    ygoCard = mapper.get_card_info_by_alias(cmd)
+    ygoCard = None
+    if cmd.isdigit():
+        ygoCard = mapper.get_card_info_by_id(int(cmd))
 
     if not ygoCard:
-        cardId = get_max_like_id(cmd)
-        ygoCard = get_card_info_by_id(cardId)
-
+        ygoCard = mapper.get_card_info_by_alias(cmd)
+        if not ygoCard:
+            cardId = get_max_like_id(cmd)
+            ygoCard = get_card_info_by_id(cardId)
     if ygoCard:
-
         messageSegment = await get_send_msg(ygoCard)
-
         await bot.send(event, messageSegment)
         directory = f"{nonebot_plugin_masterduel_img_dir}\\{ygoCard.id}"
         if os.path.exists(directory):
@@ -50,7 +51,7 @@ async def master_duel_rev(bot: Bot, event: Event):
             print(file)
             await bot.send(event, MessageSegment.image(file))
     else:
-        await bot.send(event, MessageSegment.text("暂时只支持全名查询，后续会支持别名，模糊搜索等功能，后续功能完善"))
+        await bot.send(event, MessageSegment.text("未查询到卡片"))
 
 
 async def get_send_msg(card: YgoCard) -> Message:
@@ -98,7 +99,7 @@ async def master_like_duel_rev(bot: Bot, event: Event):
 
     ygoCardList = mapper.get_card_info_like_names(cmd)
     if not ygoCardList:
-        await bot.send(event, MessageSegment.text("暂时只支持全名查询，后续会支持别名，模糊搜索等功能， 后续功能完善"))
+        await bot.send(event, MessageSegment.text("未查询到卡片"))
         return
     ygoCardList = ygoCardList[:20]
     msgs = ""
@@ -171,8 +172,34 @@ async def master_duel_rev(bot: Bot, event: Event):
     os.remove(pngName)
 
 
+cai_ding = on_regex(pattern="^裁定")
+
+
+@cai_ding.handle()
+async def cai_ding_rev(bot: Bot, event: Event):
+    cmd = event.get_plaintext()[2:]
+    cmd = cmd.strip()
+    ygoCard = mapper.get_card_info_by_id(int(cmd))
+    if ygoCard:
+        messageSegment = await get_send_msg(ygoCard)
+        # await bot.send(event, messageSegment)
+        htmlStr = get_cai_ding_html(ygoCard.id)
+        pngName = f"{os.getcwd()}\\{random.randint(1, 99999999999)}.png"
+        imgUtils.screenshot(htmlStr, pngName)
+        print(pngName)
+        await bot.send(event=event, message=messageSegment + MessageSegment.image(pngName))
+        os.remove(pngName)
+    else:
+        await bot.send(event=event, message="请输入正确的卡密")
+
+
+def chunk_string(s, chunk_size):
+    return [s[i:i + chunk_size] for i in range(0, len(s), chunk_size)]
+
+
 # 合并消息
-async def send_forward_msg_group(bot: Bot, event: GroupMessageEvent, name: str, msgs: List[str], ):
+# 合并消息
+async def send_forward_msg_group(bot: Bot, event: GroupMessageEvent, name: str, msgs: list):
     def to_json(msg):
         return {"type": "node", "data": {"name": name, "uin": bot.self_id, "content": msg}}
 

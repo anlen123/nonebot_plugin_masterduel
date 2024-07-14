@@ -231,3 +231,90 @@ def get_card_by_md_shard_deck_code(deckCode: str) -> tuple:
     exCardList = [y for y in [get_nonebot_plugin_masterduel_id_by_cid(int(x)) for x in extraCardListCid] if y]
 
     return mainCardList, exCardList
+
+
+def get_cai_ding(cardId: int):
+    # key = "绝对王 J革命"
+    ygoCard = get_card_info_by_id(cardId)
+    if not ygoCard:
+        return []
+    url = f"https://ocg-rule.readthedocs.io/_/api/v2/search/?q=\"{ygoCard.name}\"&project=ocg-rule&version=latest&language=zh-cn"
+    resp = requests.get(url=url)
+    resp_json = json.loads(resp.text)
+    msg = []
+    for x in resp_json['results']:
+        title = x['title']
+        msg_temp = title
+        content_list = []
+        for y in x['blocks']:
+            title_detail = y['title']
+            content = y['content']
+            content_list.append([title_detail, content])
+        msg.append([msg_temp, content_list])
+    return msg
+
+
+def get_cai_ding_html(cardId: int) -> str:
+    msgList = get_cai_ding(cardId)
+    if not msgList:
+        return ""
+    ygoCard = get_card_info_by_id(cardId)
+    caiDingList = []
+
+    for msg in msgList:
+        title = msg[0]
+        detailList = []
+        for m in msg[1]:
+            t = m[0]
+            desc = m[1]
+            detail_temp = f"""
+            <p>
+                {t}
+            </p>
+            <p class="fragment">
+                {desc}
+            </p>
+            """
+            detailList.append(detail_temp)
+
+        detailStr = '\n'.join(detailList)
+        singe_temp = f"""
+        <li class="module-item search-result-item">
+            <p class="module-item-title">
+                {title}
+            </p>
+            {detailStr}
+        </li>
+        """
+        caiDingList.append(singe_temp)
+    caiDingStr = '\n'.join(caiDingList)
+    sss = f"""
+    <head>
+    <!-- css -->
+    <link rel="stylesheet" href="https://assets.readthedocs.org/css/core.42fd09c35ae4.css">
+    <style>
+        .module {{
+            border: 4px solid blue;  /* 加粗蓝色边框 */
+            padding: 10px;  /* 添加内边距 */
+            margin: 10px;  /* 添加外边距 */
+            background: linear-gradient(to right, #3498db, #2ecc71);  /* 添加渐变背景色 */
+        }}
+    </style>
+    <div class="module">
+        <div class="module-wrapper">
+        <div class="module-header">
+            <h3>
+            {ygoCard.name}
+            </h3>
+        </div>
+        <div class="module-list">
+            <div class="module-list-wrapper">
+            <ul>
+                {caiDingStr}
+            </ul>
+            </div>
+        </div>
+        </div>
+    </div>
+    """
+    return sss

@@ -150,7 +150,15 @@ def get_all_temp(cardListMain: None, cardListEx: None):
     <link rel="stylesheet" id="deck-card-css"
         href="https://duelmeta.com/wp-content/plugins/ygo-plugin-master/assets/css/deck-card.css?ver=6.4.5" type="text/css"
         media="all">
-
+        <style>
+            .area > div:first-child, 
+            .area > div:nth-child(3) {{
+                font-size: 50px; 
+            }}
+            .area {{
+                border: 20px solid green;
+            }}
+        </style>
     <body class="post-template-default single single-post postid-77257 single-format-standard social-top post-style-1">
         <div id="page" class="site up action">
             <div id="content" class="site-content">
@@ -203,17 +211,25 @@ def get_singe_temp(cardId: int, count: int, rarity: str):
     if not count or count <= 1:
         limit_temp = ""
 
-    temp = f"""
-    <li class="ygo-card card-box" data-ygo-card-sn="{cardId}"
-        data-target="webuiPopover3">
+    if rarity:
+
+        rarityStr = f"""
         <div class="rarity">
             <div class="rarity-item"><img decoding="async"
                     src="{nonebot_plugin_masterduel_img_dir}\\deck_html_img\\{rarity}.png"
                     class="lazy entered loaded"
                     data-ll-status="loaded"></div>
         </div>
+        """
+    else:
+        rarityStr = ""
+
+    temp = f"""
+    <li class="ygo-card card-box" data-ygo-card-sn="{cardId}"
+        data-target="webuiPopover3">
+            {rarityStr}
         <div class="card-image"><img decoding="async"
-                src="https://dbcdn.duelmeta.com/cards/{cardId}.jpg"
+                src="https://cdn.233.momobako.com/ygopro/pics/{cardId}.jpg"
                 class="lazy entered loaded" data-ll-status="loaded">
             {limit_temp}
         </div>
