@@ -1,17 +1,23 @@
-from typing import List, Any
-from .config import Config
-from nonebot.plugin import on_notice, on_regex, on_message
-from nonebot.adapters.onebot.v11 import Bot, Event, MessageSegment, Message, GroupMessageEvent, MessageEvent, \
-    PrivateMessageEvent
-import nonebot, os, random, re
-from nonebot.typing import T_State
+import os
+import random
+import re, os
+import time
 
-from .model.Card import YgoCard
-from nonebot.rule import Rule
+from nonebot.adapters.onebot.v11 import Bot, Event, MessageSegment, Message, GroupMessageEvent, MessageEvent
+from nonebot.plugin import on_regex, on_message
+from nonebot.rule import Rule, to_me
+from nonebot.typing import T_State
+from nonebot.params import Depends
+
+from .config import Config
+from .config import Config
 from .mapper import *
+from .model.Card import YgoCard
 from .utils import imgUtils
 from .utils import rarityUtils
-from urllib import parse
+
+from nonebot_plugin_waiter import waiter
+from nonebot_plugin_userinfo import get_user_info
 
 global_config = nonebot.get_driver().config
 config = global_config.dict()
@@ -28,6 +34,11 @@ master_duel_CK = on_regex(pattern="^CK")
 async def master_duel_rev(bot: Bot, event: Event):
     cmd = event.get_plaintext()[2:]
     cmd = cmd.strip()
+    ygoCard = get_ygo(cmd)
+    await send_card(bot, event, ygoCard)
+
+
+def get_ygo(cmd: str):
     if not cmd:
         return
     ygoCard = None
@@ -38,10 +49,16 @@ async def master_duel_rev(bot: Bot, event: Event):
         ygoCard = mapper.get_card_info_by_alias(cmd)
         if not ygoCard:
             cardId = get_max_like_id(cmd)
-            ygoCard = get_card_info_by_id(cardId)
+            if cardId:
+                ygoCard = get_card_info_by_id(cardId)
+    return ygoCard
+
+
+async def send_card(bot: Bot, event: Event, ygoCard: YgoCard, pack: bool = True, desc: bool = True):
     if ygoCard:
-        messageSegment = await get_send_msg(ygoCard)
-        await bot.send(event, messageSegment)
+        messageSegment = await get_send_msg(ygoCard, pack, desc)
+        await retry_send(bot, event, messageSegment)
+        # await bot.send(event, messageSegment)
         directory = f"{nonebot_plugin_masterduel_img_dir}\\{ygoCard.id}"
         if os.path.exists(directory):
             files = os.listdir(directory)
@@ -49,16 +66,32 @@ async def master_duel_rev(bot: Bot, event: Event):
             print(random.choice(files))
             file = directory + "\\" + random.choice(files)
             print(file)
-            await bot.send(event, MessageSegment.image(file))
+            await retry_send(bot, event,
+                             MessageSegment.image(file))  # await bot.send(event, MessageSegment.image(file))
+
     else:
-        await bot.send(event, MessageSegment.text("未查询到卡片"))
+        await retry_send(bot, event, MessageSegment.text("未查询到卡片"))
 
 
-async def get_send_msg(card: YgoCard) -> Message:
+async def get_send_msg(card: YgoCard, pack: bool = True, desc: bool = True) -> MessageSegment:
+    pack_name = None
     rarity = rarityUtils.get_rarity(card.id)
     urlBase64 = imgUtils.pin_quality(int(card.id), rarity)
-    return MessageSegment.text(f"卡号：{card.id}\n{card.name}\n") + MessageSegment.text(
-        "暂未登录MD" if not rarity else "") + MessageSegment.image(urlBase64) + MessageSegment.text(f"{card.desc}")
+    sale_time = None
+    if pack:
+        sale_time, count_sum, pack_name = get_selas_time_by_id(card.id)
+    print(pack)
+    print(sale_time)
+    print(desc)
+    msg = MessageSegment.text(f"卡号：{card.id}\n")
+    if pack:
+        msg += MessageSegment.text(f"发售时间：{sale_time}\n卡包号：{pack_name}\n{card.name}\n")
+    if not rarity:
+        msg += MessageSegment.text("暂未登录MD")
+    msg += MessageSegment.image(urlBase64)
+    if desc:
+        msg += MessageSegment.text(f"{card.desc}")
+    return msg
 
 
 alias_card = on_regex(pattern="^别名")
@@ -104,7 +137,7 @@ async def master_like_duel_rev(bot: Bot, event: Event):
     ygoCardList = ygoCardList[:20]
     msgs = ""
     for card in ygoCardList:
-        msgs += MessageSegment.text(f"卡号：{card.id}      {card.name}\n\n")
+        msgs += MessageSegment.text(f"卡号：{card.id}      {card.name}\n")
     await bot.send(event=event, message=msgs)
 
 
@@ -197,7 +230,110 @@ def chunk_string(s, chunk_size):
     return [s[i:i + chunk_size] for i in range(0, len(s), chunk_size)]
 
 
-# 合并消息
+card_pack = on_regex(pattern="^卡包")
+
+
+@card_pack.handle()
+async def card_pack_rev(bot: Bot, event: Event):
+    cmd = event.get_plaintext()[2:]
+    cmd = cmd.strip()
+    cardIds = mapper.get_card_by_pack(pack=cmd)
+    sss = imgUtils.get_all_temp(cardIds, None)
+    pngName = f"{os.getcwd()}\\{random.randint(1, 99999999999)}.png"
+    imgUtils.screenshot(sss, pngName)
+    print(pngName)
+    await bot.send(event=event, message=MessageSegment.image(pngName))
+    os.remove(pngName)
+
+
+ygo_rank = on_regex(pattern="^游戏王高手排名")
+
+
+@ygo_rank.handle()
+async def ygo_rank_rev(bot: Bot, event: Event):
+    rows = mapper.get_ygo_rank(10)
+    msgs: MessageSegment = MessageSegment.text("游戏王高手排行榜\n\n")
+    for row in rows:
+        msgs += MessageSegment.text(f"{row[1]:<10}: {row[2]}\n")
+    await bot.send(event=event, message=msgs)
+
+
+cai_card = on_regex(pattern="^我是游戏王高手$")
+
+
+@cai_card.handle()
+async def cai_card_rev(bot: Bot, event: Event):
+    if os.listdir(f"{nonebot_plugin_masterduel_img_dir}\\cai"):
+        await bot.send(event=event, message="已经开了一题了，做完上一题再说")
+        return
+    cardAndNameList = mapper.get_id_and_name_all()
+    cardId, name = random.choice(cardAndNameList)
+    mapper.crop_image_from_url(cardId)
+    print(cardId)
+    fileUrl = f"{nonebot_plugin_masterduel_img_dir}\\cai\\{cardId}.jpg"
+    try:
+
+        await bot.send(event=event, message=MessageSegment.image(fileUrl))
+
+        @waiter(waits=["message"])
+        async def check(event_: Event):
+            print("111111")
+            cmd = event_.get_plaintext()
+            if cmd.strip().startswith("ck") or cmd.strip().startswith("CK"):
+                print("22222")
+                user_info = await get_user_info(bot, event, event.get_user_id())
+                return cmd[2:].strip(), user_info.user_id, user_info.user_name
+
+        async for resp in check(timeout=180, retry=4, prompt="错误喔，请仔细看看捏"):
+
+            if resp is None:
+                try:
+                    await retry_send(bot, event, MessageSegment.text("上述题目已失效 全部回答错误！！！公布答案"))
+                    ygoCard = get_card_info_by_id(cardId)
+                    await send_card(bot, event, ygoCard, pack=False, desc=False)
+                finally:
+                    pass
+                break
+
+            cmd_, user_id, user_name = resp
+
+            ygoCard = get_ygo(cmd_)
+            if ygoCard:
+                try:
+                    await send_card(bot, event, ygoCard, pack=False, desc=False)
+                finally:
+                    pass
+                if int(ygoCard.id) == int(cardId):
+                    mapper.ygo_rank_add(int(user_id), user_name)
+                    await retry_send(bot, event,
+                                     MessageSegment.text(f"牛逼啊，回答正确了 积分+1  输入\"游戏王高手排名\" 查看排名"))
+                    break
+        else:
+            await retry_send(bot, event, MessageSegment.text("全部回答错误！！！公布答案"))
+            ygoCard = get_card_info_by_id(cardId)
+            try:
+                await send_card(bot, event, ygoCard, pack=False, desc=False)
+            except Exception as e:
+                time.sleep(3)
+                print(e)
+                await send_card(bot, event, ygoCard, pack=False, desc=False)
+    finally:
+        if os.path.exists(fileUrl):
+            os.remove(fileUrl)
+
+
+async def retry_send(bot: Bot, event: Event, msg: MessageSegment):
+    count = 1
+    for x in range(5):
+        try:
+            await bot.send(event=event, message=msg)
+            break
+        except Exception as e:
+            print("有可能风控")
+            time.sleep(2)
+            print(e, count)
+
+
 # 合并消息
 async def send_forward_msg_group(bot: Bot, event: GroupMessageEvent, name: str, msgs: list):
     def to_json(msg):

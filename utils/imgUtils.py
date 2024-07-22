@@ -126,7 +126,26 @@ def screenshot(sss: str, pic_name):
         print(e)
     finally:
         driver.close()
+        print("截图完毕")
 
+
+def screenshot_by_url(sss: str, pic_name):
+    chrome_options = Options()
+    chrome_options.add_argument('headless')
+    driver = webdriver.Chrome(options=chrome_options)
+    try:
+        driver.get(sss)
+        time.sleep(1)
+        width = driver.execute_script("return document.documentElement.scrollWidth")
+        height = driver.execute_script("return document.documentElement.scrollHeight")
+        print(width, height)
+        driver.set_window_size(width, height)
+        time.sleep(1)
+        driver.save_screenshot(pic_name)
+    except Exception as e:
+        print(e)
+    finally:
+        driver.close()
         print("截图完毕")
 
 
@@ -151,10 +170,6 @@ def get_all_temp(cardListMain: None, cardListEx: None):
         href="https://duelmeta.com/wp-content/plugins/ygo-plugin-master/assets/css/deck-card.css?ver=6.4.5" type="text/css"
         media="all">
         <style>
-            .area > div:first-child, 
-            .area > div:nth-child(3) {{
-                font-size: 50px; 
-            }}
             .area {{
                 border: 20px solid green;
             }}
@@ -171,13 +186,15 @@ def get_all_temp(cardListMain: None, cardListEx: None):
                                         <div class="su-column-inner su-u-clearfix su-u-trim">
                                             <div class="deck-wrapper deck-post">
                                                 <div class="area">
-                                                    <div>主卡组</div>
+                                                    <br>
+                                                    <br>
                                                     <div class="area-item">
                                                         <ul class="card-wrapper">
                                                         {tempMainStr}
                                                         </ul>
                                                     </div>
-                                                    <div>额外卡组</div>
+                                                   <br>
+                                                   <br>
                                                     <div class="area-item">
                                                         <ul class="card-wrapper">
                                                         {tempExStr}

@@ -1,19 +1,31 @@
-from .model.Datas import Datas
-from .model.Texts import Texts
-from .model.Rarity import Rarity
-from .model.Card import buildYgoCard
+import json
 import sqlite3
-from .model.Alias import Alias
-import difflib, pypinyin
-from typing import List, Any
-import nonebot, requests, json
+from io import BytesIO
+from typing import List
 
+import Levenshtein
+import nonebot
+import parsel
+import requests
+from PIL import Image, ImageFilter
+
+from .model.Alias import Alias
 from .model.Card import YgoCard
+from .model.Card import buildYgoCard
+from .model.Datas import Datas
+from .model.Rarity import Rarity
+from .model.Texts import Texts
+from .utils.likelihoodUtils import Likelihood
 
 global_config = nonebot.get_driver().config
 config = global_config.dict()
 nonebot_plugin_masterduel_img_dir = config.get('nonebot_plugin_masterduel_img_dir')
 nonebot_plugin_masterduel_root_dir = config.get('nonebot_plugin_masterduel_root_dir')
+
+
+def get_like(s1: str, s2: str):
+    a = Likelihood()
+    return a.likelihood(s1, s2)
 
 
 def get_card_info_by_id(cardId: int) -> YgoCard:
@@ -96,6 +108,7 @@ def get_datas(sql: str) -> list[Datas]:
 
 
 def set_nonebot_plugin_masterduel(sql: str):
+    print(sql)
     conn = sqlite3.connect(f'{nonebot_plugin_masterduel_root_dir}\\nonebot_plugin_masterduel.cdb')
     cursor = conn.cursor()
     cursor.execute(sql)
@@ -122,6 +135,7 @@ def get_texts(sql: str) -> list[Texts]:
 
 
 def get_nonebot_plugin_masterduel(sql: str):
+    print(sql)
     conn = sqlite3.connect(f'{nonebot_plugin_masterduel_root_dir}\\nonebot_plugin_masterduel.cdb')
     cursor = conn.cursor()
     cursor.execute(sql)
@@ -146,8 +160,6 @@ def get_id_and_name_all():
 
 
 def get_max_like_id(name: str):
-    name = pypinyin.pinyin(name, pypinyin.NORMAL)
-    name = [x[0] for x in name]
     print(name)
 
     rows = get_id_and_name_all()
@@ -155,13 +167,13 @@ def get_max_like_id(name: str):
     max_number = 0
 
     for row in rows:
-        c_name = pypinyin.pinyin(row[1], pypinyin.NORMAL)
-        c_name = [x[0] for x in c_name]
-        # print(c_name)
-        dis = difflib.SequenceMatcher(None, c_name, name).ratio()
+        name1 = row[1]
+        dis = get_like(name1, name)
+        # dis = Levenshtein.jaro(name1, name)
         if dis > max_number:
             max_number = dis
             ret = row
+            print(dis)
     if not ret:
         return ""
     return ret[0]
@@ -318,3 +330,65 @@ def get_cai_ding_html(cardId: int) -> str:
     </div>
     """
     return sss
+
+
+def get_selas_time_by_id(cardId: int):
+    resp = requests.get(f"https://ygocdb.com/card/{cardId}")
+    pa = parsel.Selector(resp.text)
+    pack = (pa.xpath('/html/body/main/div/div[2]/div[2]/div[3]/div[1]/span/a/@href').get())
+    print(f"https://ygocdb.com{pack}")
+    resp = requests.get(f"https://ygocdb.com{pack}")
+    pa = parsel.Selector(resp.text)
+    # print(resp.text)
+    sale_time = pa.xpath('/html/body/main/div/div[1]/div/p/a/span[1]/text()').get()
+    count_sum = pa.xpath('/html/body/main/div/div[1]/div/p/a/span[2]/text()').get()
+    return sale_time, count_sum, pack[6:]
+
+
+def get_card_by_pack(pack: str):
+    resp = requests.get(f"https://ygocdb.com/pack/{pack}")
+    pa = parsel.Selector(resp.text)
+    # print(resp.text)
+    card_htmls = pa.xpath('/html/body/main/div//div[contains(@class, "row card result")]').getall()
+    card_ids = []
+    for card_html in card_htmls:
+        # print(card_html)
+        # /html/body/main/div/div[3]/div[1]/a
+        card_id = parsel.Selector(card_html).xpath('//div[1]/a/@href').get()
+        card_ids.append(card_id[6:])
+    return card_ids
+
+
+def crop_image_from_url(cardId: int):
+    # 下载图片
+    url = f"https://cdn.233.momobako.com/ygopro/pics/{cardId}.jpg"
+    response = requests.get(url)
+    img = Image.open(BytesIO(response.content))
+
+    # 裁剪图片
+    cropped_img = img.crop((50, 110, 350, 400))
+
+    blurred_img = cropped_img.filter(ImageFilter.GaussianBlur(6))
+
+    # 展示裁剪后的图片
+    # blurred_img.show()
+    blurred_img.save(f"{nonebot_plugin_masterduel_img_dir}\\cai\\{cardId}.jpg")
+
+
+def get_ygo_rank(top: int):
+    rows = get_nonebot_plugin_masterduel(f"select * from ygorank order by count desc limit {top}")
+    return rows
+
+
+def ygo_rank_add(qq: int, name: str):
+    rows = get_nonebot_plugin_masterduel(f'select * from ygorank where user_id = "{qq}"')
+    if rows:
+        row = rows[0]
+        print(row)
+        user_id = row[0]
+        count = row[2]
+        count = int(count) + 1
+        set_nonebot_plugin_masterduel(
+            f'update ygorank set count = "{count}", name = "{name}" where user_id = "{user_id}"')
+    else:
+        set_nonebot_plugin_masterduel(f'insert into ygorank (user_id, name, count) VALUES ("{qq}","{name}",1)')
